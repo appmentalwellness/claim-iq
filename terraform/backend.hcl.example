@@ -1,0 +1,14 @@
+# Backend Configuration Example
+# Copy this file to backend.hcl and customize for your environment
+# Usage: terraform init -backend-config=backend.hcl
+
+bucket         = "your-terraform-state-bucket-name"
+key            = "claimiq/dev/terraform.tfstate"
+region         = "us-east-1"
+dynamodb_table = "terraform-state-lock"
+encrypt        = true
+
+# For different environments, use different keys:
+# Dev:     "claimiq/dev/terraform.tfstate"
+# Staging: "claimiq/staging/terraform.tfstate"
+# Prod:    "claimiq/prod/terraform.tfstate"

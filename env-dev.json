@@ -1,0 +1,21 @@
+{
+  "ENVIRONMENT": "dev",
+  "AWS_REGION": "us-east-1",
+  "CLAIMS_BUCKET_NAME": "dev-claimiq-claims-bd34b92f",
+  "AURORA_CLUSTER_ARN": "arn:aws:rds:us-east-1:650251716943:cluster:dev-claimiq-cluster",
+  "AURORA_SECRET_ARN": "arn:aws:secretsmanager:us-east-1:650251716943:secret:dev/claimiq/database-Cwo3LI",
+  "DATABASE_NAME": "claimiq",
+  "AGENT_LOGS_TABLE": "dev-claimiq-agent-logs",
+  "USER_POOL_ID": "us-east-1_5wXnEfdyV",
+  "USER_POOL_CLIENT_ID": "6fso1684rhtugi00c0ks7r6s91",
+  "LAMBDA_EXECUTION_ROLE_ARN": "arn:aws:iam::650251716943:role/dev-claimiq-lambda-execution",
+  "LAMBDA_SECURITY_GROUP_ID": "sg-057bbff61f90df11a",
+  "PRIVATE_SUBNET_IDS": [
+  "subnet-01f8aa75d25417f62",
+  "subnet-051b2c4cec695ba1a"
+],
+  "API_GATEWAY_ID": "dm15nehxo6",
+  "API_GATEWAY_ROOT_RESOURCE_ID": "5arhmcexi4",
+  "API_GATEWAY_URL": "https://dm15nehxo6.execute-api.us-east-1.amazonaws.com/dev",
+  "MAX_FILE_SIZE_MB": "50"
+}

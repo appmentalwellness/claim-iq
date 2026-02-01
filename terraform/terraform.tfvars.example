@@ -1,0 +1,26 @@
+# ClaimIQ Terraform Variables Example
+# Copy this file to terraform.tfvars and customize for your environment
+
+# Basic Configuration
+environment = "dev"
+aws_region  = "us-east-1"
+
+# Project naming
+project_name = "claimiq"
+
+# Network Configuration
+vpc_cidr = "10.0.0.0/16"
+
+# Database Configuration
+db_min_capacity = 0.5
+db_max_capacity = 16
+
+# Lambda Configuration
+lambda_runtime = "python3.11"
+lambda_timeout = 300
+
+# File Upload Configuration
+max_file_size_mb = 50
+
+# Multi-tenant Configuration
+enable_tenant_isolation = true
