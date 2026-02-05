@@ -172,31 +172,26 @@ This implementation validates the following system requirements:
 ## Project Structure
 
 ```
-├── terraform/                 # Infrastructure as Code (Terraform)
-│   ├── main.tf               # Main Terraform configuration
-│   ├── variables.tf          # Input variables
-│   ├── outputs.tf            # Output values
-│   └── modules/              # Terraform modules
-│       ├── networking/       # VPC, subnets, security groups
-│       ├── security/         # KMS, IAM roles
-│       ├── storage/          # S3 buckets
-│       ├── database/         # Aurora Serverless v2
-│       ├── dynamodb/         # DynamoDB tables
-│       ├── api_gateway/      # Basic API Gateway setup
-│       └── step_functions/   # CloudWatch logs for Step Functions
-├── src/
-│   └── lambda/               # Lambda function source code
-│       ├── file_upload/      # File upload handler (Node.js)
-│       └── normalization/    # Data normalization handler (Python)
-├── database/
-├── scripts/
-│   ├── deploy-json.sh       # JSON-based deployment script
-│   ├── generate-env-json.sh # Generate environment JSON from Terraform
-│   └── start-local-json.sh  # Local development startup
-├── serverless.yml           # Serverless Framework configuration
-├── env-dev.json            # Development environment configuration
-├── ARCHITECTURE.md          # Architecture documentation
-└── README.md               # This file
+├── be/                        # Backend code
+│   ├── services/              # Microservices
+│   │   ├── api/              # HTTP API service
+│   │   └── workflows/        # Workflow services
+│   │       └── claim-processor-workflow/
+│   ├── libs/                 # Shared backend libraries
+│   │   └── shared/           # Common utilities
+│   └── terraform/            # Infrastructure as Code
+├── ui/                       # Frontend application
+│   ├── src/                  # Frontend source code
+│   ├── public/               # Static assets
+│   └── docs/                 # Frontend documentation
+├── config/                   # Configuration files
+│   └── environments/         # Environment-specific configs
+├── docs/                     # Project documentation
+│   ├── architecture/         # Architecture documentation
+│   ├── deployment/           # Deployment guides
+│   └── migration-summaries/  # Migration documentation
+├── scripts/                  # Deployment and utility scripts
+└── README.md                 # This file
 ```
 
 ## API Endpoints

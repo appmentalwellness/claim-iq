@@ -1,0 +1,233 @@
+# ClaimIQ Claim Processor Workflow Service
+# Handles S3 events, data processing, and Step Functions workflow
+
+service: claimiq-claim-processor
+
+frameworkVersion: '3'
+
+# YAML Anchors for reusability
+x-lambda-defaults: &lambda-defaults
+  runtime: nodejs18.x
+  memorySize: 1024
+  timeout: 300
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 1024
+  timeout: 300
+  
+  # Environment variables (populated from environment JSON file)
+  environment:
+    ENVIRONMENT: ${self:provider.stage}
+    CLAIMS_BUCKET_NAME: ${file(../../../../config/environments/${self:provider.stage}.json):CLAIMS_BUCKET_NAME}
+    AURORA_CLUSTER_ARN: ${file(../../../../config/environments/${self:provider.stage}.json):AURORA_CLUSTER_ARN}
+    AURORA_SECRET_ARN: ${file(../../../../config/environments/${self:provider.stage}.json):AURORA_SECRET_ARN}
+    AGENT_LOGS_TABLE: ${file(../../../../config/environments/${self:provider.stage}.json):AGENT_LOGS_TABLE}
+    DATABASE_NAME: ${file(../../../../config/environments/${self:provider.stage}.json):DATABASE_NAME}
+  
+  # IAM role (managed by Terraform)
+  role: ${file(../../../../config/environments/${self:provider.stage}.json):LAMBDA_EXECUTION_ROLE_ARN}
+  
+  # VPC configuration (managed by Terraform)
+  vpc:
+    securityGroupIds:
+      - ${file(../../../../config/environments/${self:provider.stage}.json):LAMBDA_SECURITY_GROUP_ID}
+    subnetIds: ${file(../../../../config/environments/${self:provider.stage}.json):PRIVATE_SUBNET_IDS}
+
+# Package configuration
+package:
+  patterns:
+    - '!.git/**'
+    - '!.gitignore'
+    - '!README.md'
+    - '!docs/**'
+    - '!terraform/**'
+    - '!.serverless/**'
+    - '!*.zip'
+    - '!**/*.test.ts'
+    - '!__tests__/**'
+  individually: true
+
+functions:
+  # S3 Event Processor Function
+  s3Processor:
+    <<: *lambda-defaults
+    handler: src/functions/s3-processor/index.handler
+    name: ${self:provider.stage}-claimiq-s3-processor
+    description: 'ClaimIQ S3 event processor - triggers workflow on file upload'
+    environment:
+      FUNCTION_NAME: s3-processor
+    # S3 events will be configured after deployment
+    # events:
+    #   - s3:
+    #       bucket: ${file(../../../config/environments/${self:provider.stage}.json):CLAIMS_BUCKET_NAME}
+    #       event: s3:ObjectCreated:*
+    #       rules:
+    #         - prefix: tenants/
+    #         - suffix: .pdf
+
+  # Data Normalization Function (Python)
+  normalization:
+    handler: src/functions/normalization/lambda_function.lambda_handler
+    name: ${self:provider.stage}-claimiq-normalization
+    description: 'ClaimIQ data normalization handler - Python for heavy PDF/OCR processing'
+    runtime: python3.11
+    memorySize: 2048
+    timeout: 600
+    environment:
+      FUNCTION_NAME: normalization
+
+  # Database Update Function
+  dbUpdate:
+    <<: *lambda-defaults
+    handler: src/functions/db-update/index.handler
+    name: ${self:provider.stage}-claimiq-db-update
+    description: 'ClaimIQ database update handler for Step Functions'
+    memorySize: 512
+    timeout: 30
+    environment:
+      FUNCTION_NAME: db-update
+      DATABASE_NAME: claimiq
+
+# Step Functions configuration
+stepFunctions:
+  stateMachines:
+    claimProcessing:
+      name: ${self:provider.stage}-claimiq-claim-processing
+      definition:
+        Comment: "ClaimIQ Claim Processing Workflow - Triggered by S3 Events"
+        StartAt: NormalizeClaim
+        States:
+          NormalizeClaim:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [NormalizationLambdaFunction, Arn]
+            Next: CheckNormalizationResult
+            Retry:
+              - ErrorEquals: ["Lambda.ServiceException", "Lambda.AWSLambdaException", "Lambda.SdkClientException"]
+                IntervalSeconds: 2
+                MaxAttempts: 3
+                BackoffRate: 2.0
+            Catch:
+              - ErrorEquals: ["States.ALL"]
+                Next: HandleError
+          
+          CheckNormalizationResult:
+            Type: Choice
+            Choices:
+              - Variable: "$.status"
+                StringEquals: "success"
+                Next: UpdateClaimStatus
+            Default: HandleError
+          
+          UpdateClaimStatus:
+            Type: Task
+            Resource:
+              Fn::GetAtt: [DbUpdateLambdaFunction, Arn]
+            Parameters:
+              operation: "updateClaimStatus"
+              claimId.$: "$.claim_id"
+              status: "DENIED"
+              data.$: "$.processing_result"
+            Next: ClaimProcessed
+          
+          ClaimProcessed:
+            Type: Succeed
+          
+          HandleError:
+            Type: Task
+            Resource: "arn:aws:states:::aws-sdk:dynamodb:putItem"
+            Parameters:
+              TableName: ${file(../../../../config/environments/${self:provider.stage}.json):AGENT_LOGS_TABLE}
+              Item:
+                claim_id:
+                  S: "$.claim_id"
+                timestamp:
+                  S: "$.State.EnteredTime"
+                agent_type:
+                  S: "WORKFLOW_ENGINE"
+                action:
+                  S: "ERROR"
+                error_details:
+                  S: "$.Error"
+            Next: WorkflowFailed
+          
+          WorkflowFailed:
+            Type: Fail
+            Cause: "Claim processing workflow failed"
+
+# Custom resources and outputs
+resources:
+  Resources:
+    # SSM Parameter to store Step Function ARN for cross-stack reference
+    StepFunctionArnParameter:
+      Type: AWS::SSM::Parameter
+      Properties:
+        Name: /${self:provider.stage}/claimiq/step-function-arn
+        Type: String
+        Value:
+          Ref: ClaimProcessingStepFunctionsStateMachine
+        Description: "ClaimIQ Claim Processing Step Function ARN"
+        Tags:
+          Environment: ${self:provider.stage}
+          Project: ClaimIQ
+          ManagedBy: Serverless
+
+  Outputs:
+    ClaimProcessingStateMachineArn:
+      Description: "Claim Processing Step Functions State Machine ARN"
+      Value:
+        Ref: ClaimProcessingStepFunctionsStateMachine
+      Export:
+        Name: ${self:provider.stage}-claimiq-step-function-arn
+    
+    S3ProcessorLambdaArn:
+      Description: "S3 Processor Lambda Function ARN"
+      Value:
+        Fn::GetAtt: [S3ProcessorLambdaFunction, Arn]
+      Export:
+        Name: ${self:provider.stage}-claimiq-s3-processor-arn
+    
+    NormalizationLambdaArn:
+      Description: "Normalization Lambda Function ARN"
+      Value:
+        Fn::GetAtt: [NormalizationLambdaFunction, Arn]
+      Export:
+        Name: ${self:provider.stage}-claimiq-normalization-arn
+    
+    DbUpdateLambdaArn:
+      Description: "Database Update Lambda Function ARN"
+      Value:
+        Fn::GetAtt: [DbUpdateLambdaFunction, Arn]
+      Export:
+        Name: ${self:provider.stage}-claimiq-db-update-arn
+
+# Plugins
+plugins:
+  - serverless-step-functions
+  - serverless-plugin-typescript
+  - serverless-python-requirements
+
+# Custom configuration
+custom:
+  # Step Functions plugin configuration
+  stepFunctionsStateMachine:
+    validate: true
+  
+  # TypeScript plugin configuration
+  serverless-plugin-typescript:
+    tsConfigFileLocation: './tsconfig.json'
+  
+  # Python requirements plugin configuration
+  pythonRequirements:
+    dockerizePip: non-linux
+    slim: true
+    strip: false
+    noDeps:
+      - boto3
+      - botocore
+    pipCmdExtraArgs:
+      - --no-cache-dir

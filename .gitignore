@@ -1,20 +1,27 @@
 node_modules
 
 # Environment files (keep JSON examples)
-env-local.json
+config/environments/local.json
 
 # Terraform files
-terraform/.terraform/
-terraform/*.tfplan
-terraform/*.tfstate
-terraform/*.tfstate.backup
+be/terraform/.terraform/
+be/terraform/*.tfplan
+be/terraform/*.tfstate
+be/terraform/*.tfstate.backup
 
 # Serverless files
 .serverless/
+be/services/*/.serverless/
+be/services/*/*/.serverless/
 
 # Build artifacts
 dist/
 *.zip
+src/lambda/db_init/build/
+be/services/*/dist/
+be/services/*/*/dist/
+ui/dist/
+ui/build/
 
 # IDE files
 .vscode/

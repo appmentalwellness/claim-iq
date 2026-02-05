@@ -38,7 +38,7 @@ echo "✅ AWS credentials configured for account: $AWS_ACCOUNT_ID"
 
 # Step 1: Deploy infrastructure
 echo "📦 Step 1: Deploying Terraform infrastructure..."
-cd terraform
+cd be/terraform
 
 # Initialize if needed
 if [ ! -d ".terraform" ]; then

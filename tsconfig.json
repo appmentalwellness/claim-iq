@@ -19,21 +19,24 @@
     "moduleResolution": "node",
     "resolveJsonModule": true,
     "outDir": "./dist",
-    "rootDir": "./src",
+    "rootDir": ".",
     "baseUrl": ".",
     "paths": {
-      "@claimiq/shared": ["src/shared/index"],
-      "@claimiq/shared/*": ["src/shared/*"]
+      "@claimiq/shared": ["be/libs/shared/index"],
+      "@claimiq/shared/*": ["be/libs/shared/*"]
     }
   },
   "include": [
-    "src/**/*"
+    "be/services/**/*",
+    "be/libs/**/*"
   ],
   "exclude": [
     "node_modules",
     "dist",
     "**/*.test.ts",
-    "terraform",
-    ".serverless"
+    "**/__tests__/**",
+    "be/terraform",
+    ".serverless",
+    "ui"
   ]
 }

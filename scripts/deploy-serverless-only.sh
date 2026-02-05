@@ -37,13 +37,13 @@ AWS_ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
 echo "✅ AWS credentials configured for account: $AWS_ACCOUNT_ID"
 
 # Check if environment JSON exists
-if [ ! -f "${ENV_JSON_FILE}" ]; then
-    echo "❌ Environment file ${ENV_JSON_FILE} not found!"
+if [ ! -f "config/environments/${ENVIRONMENT}.json" ]; then
+    echo "❌ Environment file config/environments/${ENVIRONMENT}.json not found!"
     echo "Please run the full deployment script first or generate the environment file"
     exit 1
 fi
 
-echo "✅ Using environment file: ${ENV_JSON_FILE}"
+echo "✅ Using environment file: config/environments/${ENVIRONMENT}.json"
 
 # Deploy serverless applications
 echo ""
@@ -60,12 +60,16 @@ fi
 echo "✅ AWS credentials verified for Serverless deployment"
 
 echo ""
-echo "📦 Step 1: Deploying main Lambda functions..."
+echo "📦 Step 1: Deploying API service..."
+cd be/services/api
 serverless deploy --stage $ENVIRONMENT --region $REGION
+cd ../../..
 
 echo ""
-echo "📦 Step 2: Deploying Step Functions..."
-serverless deploy --config serverless-stepfunctions.yml --stage $ENVIRONMENT --region $REGION
+echo "📦 Step 2: Deploying Claim Processor Workflow service..."
+cd be/services/workflows/claim-processor-workflow
+serverless deploy --stage $ENVIRONMENT --region $REGION
+cd ../../../..
 
 # Show results
 echo ""
@@ -79,23 +83,23 @@ echo ""
 
 # Show key outputs
 echo "🔗 Key Resources:"
-if command -v jq &> /dev/null && [ -f "${ENV_JSON_FILE}" ]; then
-    echo "  API Gateway URL: $(jq -r '.API_GATEWAY_URL' ${ENV_JSON_FILE})"
-    echo "  S3 Bucket: $(jq -r '.CLAIMS_BUCKET_NAME' ${ENV_JSON_FILE})"
-    echo "  DynamoDB Table: $(jq -r '.AGENT_LOGS_TABLE' ${ENV_JSON_FILE})"
+if command -v jq &> /dev/null && [ -f "config/environments/${ENVIRONMENT}.json" ]; then
+    echo "  API Gateway URL: $(jq -r '.API_GATEWAY_URL' config/environments/${ENVIRONMENT}.json)"
+    echo "  S3 Bucket: $(jq -r '.CLAIMS_BUCKET_NAME' config/environments/${ENVIRONMENT}.json)"
+    echo "  DynamoDB Table: $(jq -r '.AGENT_LOGS_TABLE' config/environments/${ENVIRONMENT}.json)"
 else
     echo "  Install 'jq' to see resource details"
 fi
 
 echo ""
 echo "🧪 Test your deployment:"
-if [ -f "${ENV_JSON_FILE}" ]; then
-    echo "  Health check: curl \$(jq -r '.API_GATEWAY_URL' ${ENV_JSON_FILE})/health"
+if [ -f "config/environments/${ENVIRONMENT}.json" ]; then
+    echo "  Health check: curl \$(jq -r '.API_GATEWAY_URL' config/environments/${ENVIRONMENT}.json)/health"
 else
     echo "  Health check: curl <API_GATEWAY_URL>/health"
 fi
 
 echo ""
 echo "🏠 For local development:"
-echo "  1. Copy ${ENV_JSON_FILE} to env-local.json"
+echo "  1. Copy config/environments/${ENVIRONMENT}.json to config/environments/local.json"
 echo "  2. Run: npm run start:local"

@@ -1,0 +1,185 @@
+# ClaimIQ API Service
+# Handles HTTP endpoints and API Gateway integration
+
+service: claimiq-api
+
+frameworkVersion: '3'
+
+# YAML Anchors for reusability
+x-common-cors: &common-cors
+  origin: '*'
+  headers:
+    - Content-Type
+    - X-Amz-Date
+    - Authorization
+    - X-Api-Key
+    - X-Amz-Security-Token
+    - X-Tenant-Id
+    - X-Hospital-Id
+  allowCredentials: false
+
+x-upload-cors: &upload-cors
+  origin: '*'
+  headers:
+    - Content-Type
+    - X-Amz-Date
+    - Authorization
+    - X-Api-Key
+    - X-Amz-Security-Token
+  allowCredentials: false
+
+x-custom-authorizer: &custom-authorizer
+  name: authorizer
+  type: request
+  resultTtlInSeconds: 300
+  identitySource: method.request.header.Authorization
+  identityValidationExpression: '^Bearer [-0-9a-zA-Z\._]*$'
+
+x-lambda-defaults: &lambda-defaults
+  runtime: nodejs18.x
+  memorySize: 1024
+  timeout: 300
+
+provider:
+  name: aws
+  runtime: nodejs18.x
+  region: ${opt:region, 'us-east-1'}
+  stage: ${opt:stage, 'dev'}
+  memorySize: 1024
+  timeout: 300
+  
+  # Environment variables (populated from environment JSON file)
+  environment:
+    ENVIRONMENT: ${self:provider.stage}
+    CLAIMS_BUCKET_NAME: ${file(../../../config/environments/${self:provider.stage}.json):CLAIMS_BUCKET_NAME}
+    AURORA_CLUSTER_ARN: ${file(../../../config/environments/${self:provider.stage}.json):AURORA_CLUSTER_ARN}
+    AURORA_SECRET_ARN: ${file(../../../config/environments/${self:provider.stage}.json):AURORA_SECRET_ARN}
+    AGENT_LOGS_TABLE: ${file(../../../config/environments/${self:provider.stage}.json):AGENT_LOGS_TABLE}
+    DATABASE_NAME: ${file(../../../config/environments/${self:provider.stage}.json):DATABASE_NAME}
+    USER_POOL_ID: ${file(../../../config/environments/${self:provider.stage}.json):USER_POOL_ID}
+    USER_POOL_CLIENT_ID: ${file(../../../config/environments/${self:provider.stage}.json):USER_POOL_CLIENT_ID}
+    MAX_FILE_SIZE_MB: 50
+  
+  # IAM role (managed by Terraform)
+  role: ${file(../../../config/environments/${self:provider.stage}.json):LAMBDA_EXECUTION_ROLE_ARN}
+  
+  # VPC configuration (managed by Terraform)
+  vpc:
+    securityGroupIds:
+      - ${file(../../../config/environments/${self:provider.stage}.json):LAMBDA_SECURITY_GROUP_ID}
+    subnetIds: ${file(../../../config/environments/${self:provider.stage}.json):PRIVATE_SUBNET_IDS}
+  
+  # API Gateway configuration (reference existing from Terraform)
+  apiGateway:
+    restApiId: ${file(../../../config/environments/${self:provider.stage}.json):API_GATEWAY_ID}
+    restApiRootResourceId: ${file(../../../config/environments/${self:provider.stage}.json):API_GATEWAY_ROOT_RESOURCE_ID}
+  
+  # Tracing
+  tracing:
+    lambda: true
+
+# Package configuration
+package:
+  patterns:
+    - '!.git/**'
+    - '!.gitignore'
+    - '!README.md'
+    - '!docs/**'
+    - '!terraform/**'
+    - '!.serverless/**'
+    - '!*.zip'
+    - '!**/*.test.ts'
+    - '!__tests__/**'
+  individually: true
+
+functions:
+  # Lambda Authorizer Function (JWT validation)
+  authorizer:
+    <<: *lambda-defaults
+    handler: src/functions/authorizer/index.handler
+    name: ${self:provider.stage}-claimiq-authorizer
+    description: 'ClaimIQ JWT authorizer for API Gateway authentication'
+    memorySize: 512
+    timeout: 30
+    environment:
+      FUNCTION_NAME: authorizer
+      USER_POOL_ID: ${file(../../config/environments/${self:provider.stage}.json):USER_POOL_ID}
+      USER_POOL_CLIENT_ID: ${file(../../config/environments/${self:provider.stage}.json):USER_POOL_CLIENT_ID}
+
+  # File Upload Function (Pre-signed URL generation)
+  fileUpload:
+    <<: *lambda-defaults
+    handler: src/functions/file-upload/index.handler
+    name: ${self:provider.stage}-claimiq-file-upload
+    description: 'ClaimIQ pre-signed URL generator for direct S3 uploads'
+    environment:
+      FUNCTION_NAME: file-upload
+    events:
+      - http:
+          path: upload
+          method: post
+          authorizer: *custom-authorizer
+          cors: *common-cors
+      - http:
+          path: upload/{claimId}
+          method: get
+          authorizer: *custom-authorizer
+          cors: *upload-cors
+
+  # Health Check Function (No authorization needed)
+  healthCheck:
+    <<: *lambda-defaults
+    handler: src/functions/file-upload/index.healthHandler
+    name: ${self:provider.stage}-claimiq-health
+    description: 'ClaimIQ API health check endpoint'
+    memorySize: 256
+    timeout: 10
+    environment:
+      FUNCTION_NAME: health-check
+    events:
+      - http:
+          path: health
+          method: get
+          cors:
+            origin: '*'
+            headers:
+              - Content-Type
+            allowCredentials: false
+
+# Custom resources and outputs
+resources:
+  Outputs:
+    FileUploadLambdaArn:
+      Description: "File Upload Lambda Function ARN"
+      Value:
+        Fn::GetAtt: [FileUploadLambdaFunction, Arn]
+      Export:
+        Name: ${self:provider.stage}-claimiq-file-upload-arn
+    
+    AuthorizerLambdaArn:
+      Description: "Authorizer Lambda Function ARN"
+      Value:
+        Fn::GetAtt: [AuthorizerLambdaFunction, Arn]
+      Export:
+        Name: ${self:provider.stage}-claimiq-authorizer-arn
+
+# Plugins
+plugins:
+  - serverless-plugin-typescript
+  - serverless-offline
+
+# Custom configuration
+custom:
+  # TypeScript plugin configuration
+  serverless-plugin-typescript:
+    tsConfigFileLocation: './tsconfig.json'
+  
+  # Serverless Offline configuration
+  serverless-offline:
+    httpPort: 3000
+    lambdaPort: 3002
+    websocketPort: 3001
+    noPrependStageInUrl: true
+    noAuth: false
+    printOutput: true
+    useChildProcesses: true

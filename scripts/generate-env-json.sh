@@ -7,18 +7,18 @@ set -e
 
 ENVIRONMENT=${1:-dev}
 TERRAFORM_OUTPUT_FILE="terraform-outputs-${ENVIRONMENT}.json"
-ENV_JSON_FILE="env-${ENVIRONMENT}.json"
+ENV_JSON_FILE="config/environments/${ENVIRONMENT}.json"
 
 echo "🔧 Generating ${ENV_JSON_FILE} from Terraform outputs..."
 
 # Check if we're in the right directory
-if [ ! -d "terraform" ]; then
-    echo "❌ Error: terraform directory not found. Run this script from the project root."
+if [ ! -d "be/terraform" ]; then
+    echo "❌ Error: be/terraform directory not found. Run this script from the project root."
     exit 1
 fi
 
 # Navigate to terraform directory
-cd terraform
+cd be/terraform
 
 # Check if Terraform is initialized
 if [ ! -d ".terraform" ]; then
@@ -90,5 +90,5 @@ echo "🎉 Ready for serverless deployment!"
 echo "💡 Run: serverless deploy --stage ${ENVIRONMENT}"
 echo ""
 echo "📋 For local development:"
-echo "  1. Copy ${ENV_JSON_FILE} to env-local.json"
+echo "  1. Copy ${ENV_JSON_FILE} to config/environments/local.json"
 echo "  2. Run: npm run start:local"
